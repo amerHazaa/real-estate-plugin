@@ -1,48 +1,45 @@
 <?php
 add_action('add_meta_boxes', 'gre_add_model_meta_boxes');
 add_action('save_post', 'gre_save_model_meta', 10, 2);
-add_action('wp_insert_post_data', 'gre_set_model_post_title_if_empty', 10, 2);
-
-// ربط ملف الجافاسكربت الخاص بتحرير النموذج
+add_filter('wp_insert_post_data', 'gre_set_model_post_title', 10, 2);
 add_action('admin_enqueue_scripts', 'gre_enqueue_model_script');
-function gre_enqueue_model_script($hook) {
-    if ($hook === 'post-new.php' || $hook === 'post.php') {
-        global $post;
-        if ($post && $post->post_type === 'gre_model') {
-            wp_enqueue_script(
-                'gre-model-meta-script',
-                plugin_dir_url(__FILE__) . '../assets/js/gre-model-meta.js',
-                ['jquery'],
-                false,
-                true
-            );
-        }
-    }
-}
 
-// Ajax لتوليد الرمز المختصر حسب البرج
-add_action('wp_ajax_gre_generate_model_short_name', function() {
-    $tower_id = intval($_GET['tower_id']);
-    $short = get_post_meta($tower_id, '_gre_tower_short_name', true);
-    $models = get_posts([
-        'post_type' => 'gre_model',
-        'post_status' => 'any',
-        'meta_query' => [
-            [
-                'key' => '_gre_model_tower_id',
-                'value' => $tower_id
-            ]
-        ]
-    ]);
-    $count = count($models) + 1;
-    wp_send_json_success(['short_name' => $short . '-M' . $count]);
+add_action('wp_ajax_gre_generate_model_short_name', function () {
+    $tower_id = intval($_GET['tower_id'] ?? 0);
+    $short_name = gre_generate_model_short_name($tower_id);
+    if ($short_name) {
+        wp_send_json_success(['short_name' => $short_name]);
+    } else {
+        wp_send_json_error(['message' => 'Failed to generate short name']);
+    }
 });
 
-function gre_set_model_post_title_if_empty($data, $postarr) {
-    if ($data['post_type'] === 'gre_model' && empty($data['post_title']) && !empty($postarr['ID'])) {
-        $short_name = get_post_meta($postarr['ID'], '_gre_model_code', true);
-        if ($short_name) {
-            $data['post_title'] = $short_name;
+function gre_generate_model_short_name(int $tower_id): ?string {
+    if (!$tower_id) return null;
+
+    $tower_short = get_post_meta($tower_id, '_gre_tower_short_name', true);
+    if (!$tower_short) return null;
+
+    $model_count = count(get_posts([
+        'post_type' => 'gre_model',
+        'post_status' => 'any',
+        'meta_query' => [['key' => '_gre_model_tower_id', 'value' => $tower_id]],
+    ])) + 1;
+
+    return "{$tower_short}-M{$model_count}";
+}
+
+function gre_set_model_post_title(array $data, array $postarr): array {
+    if ($data['post_type'] === 'gre_model' && (empty(trim($data['post_title'])) || $data['post_title'] === 'إضافة عنوان')) {
+        $tower_id = $_POST['gre_model_tower_id'] ?? get_post_meta($postarr['ID'] ?? 0, '_gre_model_tower_id', true);
+        if ($tower_id) {
+            $tower_title = get_the_title($tower_id);
+            $model_count = count(get_posts([
+                'post_type' => 'gre_model',
+                'post_status' => 'any',
+                'meta_query' => [['key' => '_gre_model_tower_id', 'value' => $tower_id]],
+            ])) + 1;
+            $data['post_title'] = "نموذج {$model_count} - {$tower_title}";
         }
     }
     return $data;
@@ -52,7 +49,7 @@ function gre_add_model_meta_boxes() {
     add_meta_box('gre_model_details', 'تفاصيل النموذج', 'gre_render_model_meta_box', 'gre_model', 'normal', 'high');
 }
 
-function gre_render_model_meta_box($post) {
+function gre_render_model_meta_box(WP_Post $post): void {
     wp_nonce_field('gre_save_model_meta', 'gre_model_meta_nonce');
 
     $fields = [
@@ -70,40 +67,18 @@ function gre_render_model_meta_box($post) {
         $fields[$key] = get_post_meta($post->ID, "_gre_model_$key", true) ?: $default;
     }
 
-    // توليد الرمز المختصر تلقائيًا عند الإنشاء
     if (get_current_screen()->action === 'add' && empty($fields['code'])) {
-        $towers = get_posts([
-            'post_type' => 'gre_tower', 'posts_per_page' => 1,
-            'orderby' => 'ID', 'order' => 'DESC'
-        ]);
+        $towers = get_posts(['post_type' => 'gre_tower', 'posts_per_page' => 1, 'orderby' => 'ID', 'order' => 'DESC']);
         if (!empty($towers)) {
-            $tower = $towers[0];
-            $tower_id = $tower->ID;
-            $tower_short = get_post_meta($tower_id, '_gre_tower_short_name', true);
-            $models = get_posts([
-                'post_type' => 'gre_model',
-                'post_status' => 'any',
-                'meta_query' => [[
-                    'key' => '_gre_model_tower_id',
-                    'value' => $tower_id
-                ]]
-            ]);
-            $fields['code'] = $tower_short . '-M' . (count($models) + 1);
-            $fields['tower_id'] = $tower_id;
+            $fields['code'] = gre_generate_model_short_name($towers[0]->ID);
+            $fields['tower_id'] = $towers[0]->ID;
         }
     }
 
-    echo '<style>
-        .gre-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-        .gre-full { grid-column: span 3; }
-        label { font-weight: bold; display: block; margin-bottom: 5px; }
-        input, select, textarea { width: 100%; }
-    </style>';
-
+    echo '<style>.gre-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}.gre-full{grid-column:span 3}label{font-weight:bold;display:block;margin-bottom:5px}input,select,textarea{width:100%}</style>';
     echo '<div class="gre-grid">';
-    echo '<div><label>البرج التابع</label>';
+    echo '<div><label>البرج التابع</label><select name="gre_model_tower_id" id="gre_model_tower_id">';
     $towers = get_posts(['post_type' => 'gre_tower', 'numberposts' => -1, 'orderby' => 'date', 'order' => 'DESC']);
-    echo '<select name="gre_model_tower_id" id="gre_model_tower_id">';
     foreach ($towers as $tower) {
         $selected = selected($fields['tower_id'], $tower->ID, false);
         echo "<option value='{$tower->ID}' $selected>{$tower->post_title}</option>";
@@ -151,22 +126,37 @@ function gre_render_model_meta_box($post) {
     document.addEventListener("DOMContentLoaded", function() {
         const towerSelect = document.getElementById("gre_model_tower_id");
         const shortNameField = document.getElementById("gre_model_code");
+        const titleField = document.getElementById("title");
+        let titleUpdated = false;
+        let initialTitle = titleField.value.trim();
 
-        async function updateShortName(towerId) {
-            const res = await fetch(ajaxurl + "?action=gre_generate_model_short_name&tower_id=" + towerId);
-            const data = await res.json();
-            if (data.success && shortNameField) {
-                shortNameField.value = data.short_name;
-            }
-        }
-
-        if (towerSelect) {
+        if (towerSelect && shortNameField && titleField) {
             towerSelect.addEventListener("change", function() {
                 updateShortName(this.value);
             });
-
-            if (shortNameField && shortNameField.value.trim() === "") {
+            if (towerSelect.value && (initialTitle === "" || initialTitle === "إضافة عنوان")) {
                 updateShortName(towerSelect.value);
+            }
+        }
+
+        async function updateShortName(towerId) {
+            if (!towerId) return;
+
+            try {
+                const res = await fetch(ajaxurl + "?action=gre_generate_model_short_name&tower_id=" + towerId);
+                const data = await res.json();
+
+                if (data.success && data.short_name) {
+                    shortNameField.value = data.short_name;
+                    if (!titleUpdated && (titleField.value.trim() === "" || titleField.value.trim() === "إضافة عنوان")) {
+                        titleField.value = data.short_name;
+                        titleUpdated = true;
+                    }
+                } else {
+                    console.error("AJAX call failed or returned no short name:", data);
+                }
+            } catch (error) {
+                console.error("Error fetching short name:", error);
             }
         }
     });
@@ -185,7 +175,6 @@ function gre_save_model_meta($post_id, $post) {
         'has_ac','has_fire_safety','has_cctv','has_water_meter','has_electricity_meter',
         'has_internet','has_wc_western','has_jacuzzi_sauna'
     ];
-
     $meta = [];
     foreach ($fields as $field) {
         $value = isset($_POST["gre_model_$field"]) ? sanitize_text_field($_POST["gre_model_$field"]) : '';
@@ -193,36 +182,20 @@ function gre_save_model_meta($post_id, $post) {
         $meta[$field] = $value;
     }
 
-    // توليد رمز مختصر تلقائي إذا لم يتم إدخاله
-    if (empty($meta['code']) && !empty($meta['tower_id'])) {
-        $tower_short = get_post_meta($meta['tower_id'], '_gre_tower_short_name', true);
-        for ($i = 1; $i <= 10; $i++) {
-            $candidate = $tower_short . '-M' . $i;
-            $existing = get_posts([
-                'post_type' => 'gre_model',
-                'post_status' => 'any',
-                'meta_key' => '_gre_model_code',
-                'meta_value' => $candidate,
-                'numberposts' => 1
-            ]);
-            if (empty($existing)) {
-                update_post_meta($post_id, '_gre_model_code', $candidate);
-                $meta['code'] = $candidate;
-                break;
-            }
-        }
+    $generated_code = gre_generate_model_short_name($meta['tower_id']);
+    if ($generated_code && $generated_code !== $meta['code']) {
+        update_post_meta($post_id, '_gre_model_code', $generated_code);
+        $meta['code'] = $generated_code;
     }
 
-    // توليد الشقق تلقائيًا
     if (get_post_meta($post_id, '_gre_apartment_generated', true) !== '1' && !empty($meta['tower_id']) && $meta['code']) {
         $tower_id = $meta['tower_id'];
-        $tower_short = get_post_meta($tower_id, '_gre_tower_short_name', true);
         $model_code = $meta['code'];
         $floors = (int) get_post_meta($tower_id, '_gre_tower_floors', true);
         $status = $meta['default_status'];
 
         for ($i = 1; $i <= $floors; $i++) {
-            $code = "{$tower_short}-{$model_code}-{$i}";
+            $code = "{$model_code}-{$i}";
             $existing = get_posts([
                 'post_type' => 'gre_apartment',
                 'meta_key' => '_gre_apartment_apartment_code',
@@ -249,23 +222,21 @@ function gre_save_model_meta($post_id, $post) {
                 ]);
             }
         }
-
         update_post_meta($post_id, '_gre_apartment_generated', '1');
     }
 }
 
-add_action('before_delete_post', function($post_id) {
+add_action('before_delete_post', function ($post_id) {
     $post = get_post($post_id);
     if ($post && $post->post_type === 'gre_model') {
         $apartments = get_posts([
             'post_type' => 'gre_apartment',
             'posts_per_page' => -1,
-            'meta_query' => [
-                ['key' => '_gre_apartment_model_id', 'value' => $post_id]
-            ]
+            'meta_query' => [['key' => '_gre_apartment_model_id', 'value' => $post_id]],
         ]);
         foreach ($apartments as $apt) {
             wp_delete_post($apt->ID, true);
         }
     }
 });
+?>

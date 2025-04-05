@@ -3,11 +3,12 @@ add_action('add_meta_boxes', 'gre_add_tower_meta_boxes');
 add_action('save_post', 'gre_save_tower_meta');
 add_filter('enter_title_here', 'gre_change_title_placeholder');
 
+define('GRE_DEFAULT_LAT', 15.3694);
+define('GRE_DEFAULT_LNG', 44.1910);
+
 function gre_change_title_placeholder($title) {
     $screen = get_current_screen();
-    if ($screen->post_type === 'gre_tower') {
-        return 'اسم البرج';
-    }
+    if ($screen->post_type === 'gre_tower') return 'اسم البرج';
     return $title;
 }
 
@@ -15,31 +16,23 @@ function gre_add_tower_meta_boxes() {
     add_meta_box('gre_tower_details', 'تفاصيل البرج', 'gre_render_tower_meta_box', 'gre_tower', 'normal', 'high');
 }
 
+function gre_get_tower_meta($post_id, $key, $default = '') {
+    return get_post_meta($post_id, "_gre_tower_$key", true) ?: $default;
+}
+
 function gre_render_tower_meta_box($post) {
     wp_nonce_field('gre_save_tower_meta', 'gre_tower_meta_nonce');
 
     $fields = [
-        'short_name' => '',
-        'floors' => '',
-        'location_desc' => '',
-        'location_lat' => '',
-        'location_lng' => '',
-        'city' => 'أمانة العاصمة',
-        'district' => '',
-        'has_parking' => '',
-        'total_units' => '',
-        'available_units' => '',
-        'building_type' => '',
-        'build_year' => '',
-        'status' => '',
-        'elevators' => '',
-        'has_generator' => '',
-        'has_shops' => '',
+        'short_name' => '', 'floors' => '', 'location_desc' => '', 'location_lat' => '',
+        'location_lng' => '', 'city' => 'أمانة العاصمة', 'district' => '', 'has_parking' => '',
+        'total_units' => '', 'available_units' => '', 'building_type' => '', 'build_year' => '',
+        'status' => '', 'elevators' => '', 'has_generator' => '', 'has_shops' => '',
         'general_description' => ''
     ];
 
     foreach ($fields as $key => $default) {
-        $fields[$key] = get_post_meta($post->ID, "_gre_tower_$key", true) ?: $default;
+        $fields[$key] = gre_get_tower_meta($post->ID, $key, $default);
     }
 
     echo '<style>
@@ -59,15 +52,52 @@ function gre_render_tower_meta_box($post) {
     echo '<div><label>عدد المصاعد</label><input type="number" name="gre_tower_elevators" value="' . esc_attr($fields['elevators']) . '" /></div>';
     echo '<div><label>سنة البناء</label><input type="number" name="gre_tower_build_year" value="' . esc_attr($fields['build_year']) . '" /></div>';
 
-    echo '<div><label><input type="checkbox" name="gre_tower_has_generator" value="1"' . checked($fields['has_generator'], '1', false) . '> مولد كهربائي</label></div>';
-    echo '<div><label><input type="checkbox" name="gre_tower_has_parking" value="1"' . checked($fields['has_parking'], '1', false) . '> موقف سيارات</label></div>';
-    echo '<div><label><input type="checkbox" name="gre_tower_has_shops" value="1"' . checked($fields['has_shops'], '1', false) . '> محلات تجارية</label></div>';
+    $checkboxes = [
+        'has_generator' => 'مولد كهربائي',
+        'has_parking' => 'موقف سيارات',
+        'has_shops' => 'محلات تجارية'
+    ];
+    foreach ($checkboxes as $key => $label) {
+        echo "<div><label><input type='checkbox' name='gre_tower_$key' value='1'" . checked($fields[$key], '1', false) . "> $label</label></div>";
+    }
+
     echo '<div><label>نوع المبنى</label><select name="gre_tower_building_type">
         <option value="tower"' . selected($fields['building_type'], 'tower', false) . '>برج بعدة نماذج وشقق</option>
         <option value="villa"' . selected($fields['building_type'], 'villa', false) . '>فلة بنموذج وحيد</option>
     </select></div>';
     echo '</div>';
 
+    gre_render_location_fields($fields);
+
+    echo '<div class="gre-grid">';
+    echo '<div class="gre-full"><label>الوصف المكاني</label><textarea name="gre_tower_location_desc">' . esc_textarea($fields['location_desc']) . '</textarea></div>';
+    echo '<div class="gre-full"><label>الوصف العام</label><textarea name="gre_tower_general_description">' . esc_textarea($fields['general_description']) . '</textarea></div>';
+    echo '</div>';
+
+    echo '<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>';
+    echo '<link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>';
+    echo '<script>
+        const GRE_DEFAULT_LAT = ' . GRE_DEFAULT_LAT . ';
+        const GRE_DEFAULT_LNG = ' . GRE_DEFAULT_LNG . ';
+
+        document.addEventListener("DOMContentLoaded", function() {
+            var latInput = document.getElementById("gre_tower_location_lat");
+            var lngInput = document.getElementById("gre_tower_location_lng");
+            var lat = parseFloat(latInput.value) || GRE_DEFAULT_LAT;
+            var lng = parseFloat(lngInput.value) || GRE_DEFAULT_LNG;
+            var map = L.map("map").setView([lat, lng], 13);
+            L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
+            var marker = L.marker([lat, lng], {draggable: true}).addTo(map);
+            marker.on("dragend", function(e) {
+                var position = marker.getLatLng();
+                latInput.value = position.lat.toFixed(6);
+                lngInput.value = position.lng.toFixed(6);
+            });
+        });
+    </script>';
+}
+
+function gre_render_location_fields($fields) {
     echo '<div class="gre-map-wrap">';
     echo '<div id="map" class="gre-map"></div>';
     echo '<div class="gre-map-fields">';
@@ -89,42 +119,27 @@ function gre_render_tower_meta_box($post) {
     echo '<label>عدد الشقق الإجمالي</label><input type="number" name="gre_tower_total_units" value="' . esc_attr($fields['total_units']) . '" readonly />';
     echo '<label>عدد الشقق المتوفرة</label><input type="number" name="gre_tower_available_units" value="' . esc_attr($fields['available_units']) . '" readonly />';
     echo '</div></div>';
+}
 
-    echo '<div class="gre-grid">';
-    echo '<div class="gre-full"><label>الوصف المكاني</label><textarea name="gre_tower_location_desc">' . esc_textarea($fields['location_desc']) . '</textarea></div>';
-    echo '<div class="gre-full"><label>الوصف العام</label><textarea name="gre_tower_general_description">' . esc_textarea($fields['general_description']) . '</textarea></div>';
-    echo '</div>';
-
-    echo '<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>';
-    echo '<link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>';
-    echo '<script>
-        document.addEventListener("DOMContentLoaded", function() {
-            var latInput = document.getElementById("gre_tower_location_lat");
-            var lngInput = document.getElementById("gre_tower_location_lng");
-            var lat = parseFloat(latInput.value) || 15.3694;
-            var lng = parseFloat(lngInput.value) || 44.1910;
-            var map = L.map("map").setView([lat, lng], 13);
-            L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
-            var marker = L.marker([lat, lng], {draggable: true}).addTo(map);
-            marker.on("dragend", function(e) {
-                var position = marker.getLatLng();
-                latInput.value = position.lat.toFixed(6);
-                lngInput.value = position.lng.toFixed(6);
-            });
-        });
-    </script>';
+function gre_save_tower_field($post_id, $key) {
+    $val = sanitize_text_field($_POST["gre_tower_$key"] ?? '');
+    update_post_meta($post_id, "_gre_tower_$key", $val);
 }
 
 function gre_save_tower_meta($post_id) {
-    if (!isset($_POST['gre_tower_meta_nonce']) || !wp_verify_nonce($_POST['gre_tower_meta_nonce'], 'gre_save_tower_meta')) return;
-    if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;
-    if (!current_user_can('edit_post', $post_id)) return;
+    if (
+        !isset($_POST['gre_tower_meta_nonce']) ||
+        !wp_verify_nonce($_POST['gre_tower_meta_nonce'], 'gre_save_tower_meta') ||
+        (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) ||
+        !current_user_can('edit_post', $post_id)
+    ) return;
 
-    $fields = ['short_name','floors','location_desc','location_lat','location_lng','city','district','has_parking','total_units','available_units','building_type','build_year','status','elevators','has_generator','has_shops','general_description'];
+    $fields = ['short_name', 'floors', 'location_desc', 'location_lat', 'location_lng', 'city', 'district', 'has_parking',
+               'total_units', 'available_units', 'building_type', 'build_year', 'status', 'elevators', 'has_generator',
+               'has_shops', 'general_description'];
 
     foreach ($fields as $field) {
-        $value = isset($_POST["gre_tower_$field"]) ? sanitize_text_field($_POST["gre_tower_$field"]) : '';
-        update_post_meta($post_id, "_gre_tower_$field", $value);
+        gre_save_tower_field($post_id, $field);
     }
 }
 ?>
