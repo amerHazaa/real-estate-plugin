@@ -140,13 +140,13 @@ My Plugin File list:
  \* public/templates/single-gre\_tower.php
 
 these is the content of each file :  
-\* gre-real-estate.php this file contains:  
+
+gre-real-estate.php this file contains:  
 \<?php  
 /\*\*  
  \* Plugin Name: GRE Real Estate  
  \* Description: إدارة الأبراج والنماذج والشقق السكنية.  
  \*/
-
 // Autoload classes  
 require\_once plugin\_dir\_path(\_\_FILE\_\_) . 'includes/class-loader.php';  
 // Init Post Types  
@@ -157,10 +157,9 @@ new GRE\_Apartment();
 require\_once plugin\_dir\_path(\_\_FILE\_\_) . 'admin/admin-menus.php';  
 ?\>  
    
-\* admin/admin-menus.php this file contains:  
-\<?php  
+admin/admin-menus.php this file contains:  
+<?php  
 // قوائم لوحة التحكم وإعدادات لوحة الإدارة
-
 // تحميل مكتبة OpenStreetMap (Leaflet)  
 function gre\_enqueue\_leaflet\_scripts($hook) {  
     $screen \= get\_current\_screen();  
@@ -170,7 +169,6 @@ function gre\_enqueue\_leaflet\_scripts($hook) {
     }  
 }  
 add\_action('admin\_enqueue\_scripts', 'gre\_enqueue\_leaflet\_scripts');
-
 // إعداد قوائم مخصصة للإضافة  
 function gre\_add\_admin\_menus() {  
     // مستقبلاً يمكننا إضافة صفحات فرعية مخصصة هنا  
@@ -178,8 +176,14 @@ function gre\_add\_admin\_menus() {
 }  
 add\_action('admin\_menu', 'gre\_add\_admin\_menus'); ?\>
 
-\* admin/apartment-meta-boxes.php this file contains:  
-\<?php  
+
+
+
+
+
+admin/apartment-meta-boxes.php this file contains: 
+
+<?php  
 add\_action('add\_meta\_boxes', 'gre\_add\_apartment\_meta\_boxes');  
 add\_action('save\_post', 'gre\_save\_apartment\_meta');
 
@@ -314,8 +318,9 @@ function gre\_save\_apartment\_meta($post\_id) {
 ?\>
 
    
-\* admin/model-meta-boxes.php this file contains:  
-\<?php  
+admin/model-meta-boxes.php this file contains:  
+
+<?php  
 add\_action('add\_meta\_boxes', 'gre\_add\_model\_meta\_boxes');  
 add\_action('save\_post', 'gre\_save\_model\_meta', 10, 2);  
 add\_filter('wp\_insert\_post\_data', 'gre\_set\_model\_post\_title', 10, 2);
@@ -360,7 +365,6 @@ function gre\_set\_model\_post\_title(array $data, array $postarr): array {
     }  
     return $data;  
 }
-
 function gre\_add\_model\_meta\_boxes() {  
     add\_meta\_box('gre\_model\_details', 'تفاصيل النموذج', 'gre\_render\_model\_meta\_box', 'gre\_model', 'normal', 'high');  
 }
@@ -559,8 +563,10 @@ add\_action('before\_delete\_post', function ($post\_id) {
    
    
    
-\* admin/tower-meta-boxes.php this file contains:  
-\<?php  
+   
+admin/tower-meta-boxes.php this file contains:  
+
+<?php  
 add\_action('add\_meta\_boxes', 'gre\_add\_tower\_meta\_boxes');  
 add\_action('save\_post', 'gre\_save\_tower\_meta');  
 add\_filter('enter\_title\_here', 'gre\_change\_title\_placeholder');  
@@ -572,12 +578,10 @@ function gre\_change\_title\_placeholder($title) {
 	$screen \= get\_current\_screen();  
 	if ($screen-\>post\_type \=== 'gre\_tower') return 'اسم البرج';  
 	return $title;  
-}  
-   
+}    
 function gre\_add\_tower\_meta\_boxes() {  
 	add\_meta\_box('gre\_tower\_details', 'تفاصيل البرج', 'gre\_render\_tower\_meta\_box', 'gre\_tower', 'normal', 'high');  
-}  
-   
+}     
 function gre\_get\_tower\_meta($post\_id, $key, $default \= '') {  
 	return get\_post\_meta($post\_id, "\_gre\_tower\_$key", true) ?: $default;  
 }  
@@ -2232,7 +2236,7 @@ if (have\_posts()) :
             	\</section\>  
         	\</article\>  
     	\</main\>  
-\<?php  
+<?php  
 	endwhile;  
 endif;  
    
